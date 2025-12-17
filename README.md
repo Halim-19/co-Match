@@ -146,7 +146,3 @@ Profile pictures are stored in **Supabase Storage**.
 * [ ] **RLS Enabled:** Every table in the Supabase dashboard must have RLS toggled **ON**.
 * [ ] **Service Role Key:** Never use the `service_role` key in the frontend (use `anon` key only).
 * [ ] **Email Confirmation:** Enabled in Supabase Auth settings to prevent bot spam.
-
----
-
-*If you need help writing a specific **PostgreSQL Function (RPC)** for a complex matching algorithm (e.g., scoring based on multiple factors), let me know!*
