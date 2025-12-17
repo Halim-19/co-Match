@@ -1,91 +1,152 @@
+# 🤝 co-Match | Project Documentation
 
-### **Project Overview: co-Match**
-
-**co-Match** is a full-stack web application designed to connect users (e.g., job seekers and recruiters, or service providers and clients) using a matching algorithm. It emphasizes real-time updates and collaborative filtering to suggest the best connections.
-
----
-
-### **1. Key Features**
-
-* **Intelligent Matching:** An algorithm that scores users based on skill sets, location, or preferences.
-* **Real-time Notifications:** Uses WebSockets (Socket.io) to notify users when a "match" is found.
-* **User Profiles:** Detailed profiles for both sides of the marketplace (e.g., Employer vs. Candidate).
-* **Dashboard:** A visual interface to track active matches and communication history.
-* **Secure Authentication:** JWT-based login and role-based access control.
+**co-Match** is a real-time collaborative platform that connects users based on shared interests, skills, or professional requirements. By leveraging **Supabase**, the project utilizes a serverless architecture with real-time database subscriptions and built-in authentication.
 
 ---
 
-### **2. Technical Stack**
+## 🏗️ Technical Architecture
 
-* **Frontend:** React.js or Next.js (TypeScript) for a responsive UI.
-* **Backend:** Node.js with Express.
-* **Database:** MongoDB (NoSQL) for flexible user profiles or PostgreSQL for relational data.
-* **Real-time:** Socket.io for live updates.
-* **State Management:** Redux Toolkit or React Context API.
+* **Frontend:** React.js / Next.js
+* **Backend-as-a-Service:** [Supabase](https://supabase.com/)
+* **Auth:** GoTrue (Email, Magic Links, Social)
+* **Database:** PostgreSQL
+* **Real-time:** Postgres Changes (via WebSockets)
+* **Storage:** Supabase Buckets (for profile images/documents)
+
+
 
 ---
 
-### **3. Installation & Setup**
+## 🛠️ Database Schema (PostgreSQL)
 
-#### **Prerequisites**
+Run the following in your **Supabase SQL Editor** to set up the core tables for the matching engine:
 
-* Node.js (v16+)
-* MongoDB instance (Local or Atlas)
+```sql
+-- 1. Profiles Table (Extends Supabase Auth)
+create table profiles (
+  id uuid references auth.users not null primary key,
+  full_name text,
+  avatar_url text,
+  skills text[], -- Array of skills for matching
+  bio text,
+  updated_at timestamp with time zone
+);
 
-#### **Steps**
+-- 2. Matches Table
+create table matches (
+  id uuid default uuid_generate_v4() primary key,
+  user_one uuid references profiles(id),
+  user_two uuid references profiles(id),
+  status text check (status in ('pending', 'accepted', 'rejected')) default 'pending',
+  created_at timestamp with time zone default now()
+);
 
-1. **Clone the Repo:**
-```bash
-git clone https://github.com/Halim-19/co-Match.git
-cd co-Match
+-- 3. Enable Row Level Security (RLS)
+alter table profiles enable row level security;
+alter table matches enable row level security;
+
+-- 4. Policies: Users can only edit their own profile
+create policy "Users can update own profile" on profiles
+  for update using (auth.uid() = id);
 
 ```
 
+---
 
-2. **Install Dependencies:**
-```bash
-npm install
-# or if it's a monorepo
-npm run install-all
+## 🚀 Getting Started
 
-```
+### 1. Environment Configuration
 
+Create a `.env.local` file in your root directory:
 
-3. **Environment Variables (`.env`):**
-Create a `.env` file in the root directory:
 ```env
-PORT=5000
-MONGO_URI=your_mongodb_connection_string
-JWT_SECRET=your_secret_key
+VITE_SUPABASE_URL=https://your-project-id.supabase.co
+VITE_SUPABASE_ANON_KEY=your-public-anon-key
 
 ```
 
+### 2. Initialize Supabase Client
 
-4. **Run the Project:**
-```bash
-# Run Backend & Frontend concurrently
-npm run dev
+In `src/lib/supabaseClient.js`:
+
+```javascript
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 ```
 
+### 3. Implementing the Matching Logic
 
+Instead of a heavy backend server, use **Supabase Realtime** to notify users when a match occurs:
+
+```javascript
+// Listen for new matches in real-time
+const matchSubscription = supabase
+  .channel('public:matches')
+  .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'matches' }, payload => {
+    console.log('New Match Found!', payload.new);
+    // Trigger UI notification
+  })
+  .subscribe();
+
+```
 
 ---
 
-### **4. Core Logic: The Matching Engine**
+## 🧩 Key Features (Fixed for Supabase)
 
-The project likely uses a scoring system. For example:
+### **Authentication**
 
-* **Skill Match:** +50 points.
-* **Location Match:** +30 points.
-* **Budget/Salary Match:** +20 points.
-If the total score exceeds a threshold (e.g., 70), a "Match" is created in the database.
+Users sign up via `supabase.auth.signUp()`. Upon signup, a PostgreSQL trigger automatically creates a entry in the `profiles` table to store extra metadata like skills.
+
+### **The Matching Engine**
+
+To find relevant users, we use **PostgreSQL Array Overlap (`&&`)**. You can call this logic directly from the frontend:
+
+```javascript
+const { data, error } = await supabase
+  .from('profiles')
+  .select('*')
+  .contains('skills', ['React', 'Node.js']); // Find users with overlapping skills
+
+```
+
+### **File Uploads**
+
+Profile pictures are stored in **Supabase Storage**.
+
+* **Bucket Name:** `avatars`
+* **Security:** RLS policy ensures users can only upload to their own folder: `(storage.foldername(name))[1] = auth.uid()`.
 
 ---
 
-### **5. Troubleshooting**
+## 📂 Project Structure
 
-* **404 Error on GitHub:** If you cannot see the code, ensure you are logged into an account that has been granted access by **Halim-19**, as the repo may be set to **Private**.
-* **Connection Issues:** Ensure your MongoDB URI is correctly whitelisted for your IP address.
+```text
+├── src
+│   ├── components   # UI Components (MatchCard, Navbar)
+│   ├── hooks        # Custom hooks for Supabase logic
+│   ├── lib          # Supabase client initialization
+│   ├── pages        # Dashboard, Profiles, Login
+│   └── types        # TypeScript definitions for DB tables
+├── supabase
+│   └── migrations   # SQL files for DB versioning
+└── .env.local       # API Keys
 
-**Note:** If you have access to the specific source code and need a summary of a particular file (like `server.js` or `MatchController.js`), feel free to paste the code here and I can explain it in detail.
+```
+
+---
+
+## 🛡️ Security Checklist
+
+* [ ] **RLS Enabled:** Every table in the Supabase dashboard must have RLS toggled **ON**.
+* [ ] **Service Role Key:** Never use the `service_role` key in the frontend (use `anon` key only).
+* [ ] **Email Confirmation:** Enabled in Supabase Auth settings to prevent bot spam.
+
+---
+
+*If you need help writing a specific **PostgreSQL Function (RPC)** for a complex matching algorithm (e.g., scoring based on multiple factors), let me know!*
